@@ -1,0 +1,13 @@
+[project]
+name = "ecommerce-recommender-mlops-daniel"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "dvc>=3.67.1",
+    "mlflow>=3.12.0",
+    "pydantic-settings>=2.14.1",
+    "scikit-learn>=1.8.0",
+    "torch>=2.12.0",
+]
