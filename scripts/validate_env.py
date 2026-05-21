@@ -13,7 +13,7 @@ class Settings(BaseSettings):
 
     # define a configuração interna do Pydantic para ler o arquivo .env
     model_config = SettingsConfigDict(
-        env_file=".env.example", env_file_encoding="utf-8", extra="ignore"
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
 
