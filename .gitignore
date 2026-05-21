@@ -1,1 +1,12 @@
-/data
+# ambientes virtuais - venvs
+.venv/
+__pycache__/
+*.pyc
+
+# dados e modelos 
+data/
+models/
+
+# segredos e cache
+mlruns/
+.env
