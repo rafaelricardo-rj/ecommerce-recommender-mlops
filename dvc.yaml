@@ -1,0 +1,8 @@
+stages:
+  preprocess:
+    cmd: uv run python src/preprocess.py
+    deps:
+      - src/preprocess.py
+      - data/raw/events.csv
+    outs:
+      - data/processed/events_clean.csv

@@ -4,9 +4,12 @@ __pycache__/
 *.pyc
 
 # dados e modelos 
-data/
+notebooks/
 models/
 
 # segredos e cache
 mlruns/
 .env
+
+#FIAP Docs
+Tech Challenge Fase 02.pdf

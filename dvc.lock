@@ -1,0 +1,18 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: uv run python src/preprocess.py
+    deps:
+    - path: data/raw/events.csv
+      hash: md5
+      md5: fddaf7c1c6a9df23a726500a08ffdd7e
+      size: 94237913
+    - path: src/preprocess.py
+      hash: md5
+      md5: 0bfd5f7fd93730cce2c5fc780d6b65db
+      size: 1090
+    outs:
+    - path: data/processed/events_clean.csv
+      hash: md5
+      md5: dff658ebe4c5262286fa2827b5c658de
+      size: 47542640
