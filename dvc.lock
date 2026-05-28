@@ -7,12 +7,40 @@ stages:
       hash: md5
       md5: fddaf7c1c6a9df23a726500a08ffdd7e
       size: 94237913
+    - path: src/feature_eng.py
+      hash: md5
+      md5: 7706fbedbd6d5eb5e8e6453460a601ff
+      size: 1298
     - path: src/preprocess.py
       hash: md5
-      md5: 0bfd5f7fd93730cce2c5fc780d6b65db
-      size: 1090
+      md5: 767022cde4286f62d81ab274fa079d4e
+      size: 994
+    - path: src/utils.py
+      hash: md5
+      md5: 86781e8d059b063238b22f42ca634f51
+      size: 173
     outs:
     - path: data/processed/events_clean.csv
       hash: md5
       md5: dff658ebe4c5262286fa2827b5c658de
       size: 47542640
+  feature_eng:
+    cmd: uv run python src/feature_eng.py
+    deps:
+    - path: data/processed/events_clean.csv
+      hash: md5
+      md5: dff658ebe4c5262286fa2827b5c658de
+      size: 47542640
+    - path: src/feature_eng.py
+      hash: md5
+      md5: 7706fbedbd6d5eb5e8e6453460a601ff
+      size: 1298
+    - path: src/utils.py
+      hash: md5
+      md5: 86781e8d059b063238b22f42ca634f51
+      size: 173
+    outs:
+    - path: data/features/user_features.csv
+      hash: md5
+      md5: 9e3beb60afc2998b70f94050a73d8a34
+      size: 3288402

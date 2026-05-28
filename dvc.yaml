@@ -3,6 +3,16 @@ stages:
     cmd: uv run python src/preprocess.py
     deps:
       - src/preprocess.py
+      - src/utils.py
       - data/raw/events.csv
     outs:
       - data/processed/events_clean.csv
+
+  feature_eng:
+    cmd: uv run python src/feature_eng.py
+    deps:
+      - src/feature_eng.py
+      - src/utils.py
+      - data/processed/events_clean.csv
+    outs:
+      - data/features/user_features.csv
