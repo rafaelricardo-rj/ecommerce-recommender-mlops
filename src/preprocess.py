@@ -1,10 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-
-def load_data(filepath: Path) -> pd.DataFrame:
-    """Carrega os dados brutos do arquivo CSV."""
-    return pd.read_csv(filepath)
+from utils import load_data
 
 
 def filter_active_users(df: pd.DataFrame, min_interactions: int = 3) -> pd.DataFrame:
