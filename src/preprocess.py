@@ -17,6 +17,7 @@ def main() -> None:
     output_dir = Path("data/processed")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    print("=============================================================")
     print("Carregando dados brutos...")
     df = load_data(input_path)
 

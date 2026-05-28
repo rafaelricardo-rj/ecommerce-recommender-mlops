@@ -16,3 +16,11 @@ stages:
       - data/processed/events_clean.csv
     outs:
       - data/features/user_features.csv
+
+  train:
+    cmd: uv run python src/train.py
+    deps:
+      - src/train.py
+      - data/features/user_features.csv
+    outs:
+      - models/recommender_model.pth

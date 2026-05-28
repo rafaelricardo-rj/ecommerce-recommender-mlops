@@ -7,18 +7,14 @@ stages:
       hash: md5
       md5: fddaf7c1c6a9df23a726500a08ffdd7e
       size: 94237913
-    - path: src/feature_eng.py
-      hash: md5
-      md5: 7706fbedbd6d5eb5e8e6453460a601ff
-      size: 1298
     - path: src/preprocess.py
       hash: md5
-      md5: 767022cde4286f62d81ab274fa079d4e
-      size: 994
+      md5: 6857393d017b13050997763a9287981a
+      size: 1070
     - path: src/utils.py
       hash: md5
-      md5: 86781e8d059b063238b22f42ca634f51
-      size: 173
+      md5: 869c1cfa66cdf7be60dc0c817fedd9c3
+      size: 203
     outs:
     - path: data/processed/events_clean.csv
       hash: md5
@@ -33,14 +29,30 @@ stages:
       size: 47542640
     - path: src/feature_eng.py
       hash: md5
-      md5: 7706fbedbd6d5eb5e8e6453460a601ff
-      size: 1298
+      md5: ff61c803a3c69b57f8000bf51b4892f6
+      size: 1598
     - path: src/utils.py
       hash: md5
-      md5: 86781e8d059b063238b22f42ca634f51
-      size: 173
+      md5: 869c1cfa66cdf7be60dc0c817fedd9c3
+      size: 203
     outs:
     - path: data/features/user_features.csv
       hash: md5
       md5: 9e3beb60afc2998b70f94050a73d8a34
       size: 3288402
+  train:
+    cmd: uv run python src/train.py
+    deps:
+    - path: data/features/user_features.csv
+      hash: md5
+      md5: 9e3beb60afc2998b70f94050a73d8a34
+      size: 3288402
+    - path: src/train.py
+      hash: md5
+      md5: b4f3e2d44ce752859772325e1de5f8c3
+      size: 1628
+    outs:
+    - path: models/recommender_model.pth
+      hash: md5
+      md5: ed3d6671fd2f02e5f5e27cf54dd656ef
+      size: 2881

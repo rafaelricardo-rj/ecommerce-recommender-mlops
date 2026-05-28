@@ -11,6 +11,11 @@ def create_user_features(df: pd.DataFrame) -> pd.DataFrame:
     features.columns.name = None
     features = features.reset_index()
 
+    # Preenchendo possíveis valores nulos caso algum evento não exista
+    for col in ["view", "addtocart", "transaction"]:
+        if col not in features.columns:
+            features[col] = 0
+
     # Calcula o total de interações para cada usuário
     event_cols = [
         col for col in ["view", "addtocart", "transaction"] if col in features.columns
@@ -26,6 +31,7 @@ def main():
     output_dir = Path("data/features")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    print("=============================================================")
     print("Carregando dados limpos...")
     df_clean = load_data(input_path)
 
