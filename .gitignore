@@ -1,0 +1,15 @@
+# ambientes virtuais - venvs
+.venv/
+__pycache__/
+*.pyc
+
+# dados e modelos 
+notebooks/
+models/
+
+# segredos e cache
+mlruns/
+.env
+
+#FIAP Docs
+Tech Challenge Fase 02.pdf
