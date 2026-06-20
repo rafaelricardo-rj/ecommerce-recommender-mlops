@@ -31,7 +31,6 @@ def main():
     output_dir = Path("data/features")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=============================================================")
     print("Carregando dados limpos...")
     df_clean = load_data(input_path)
 
@@ -41,6 +40,7 @@ def main():
     output_path = output_dir / "user_features.csv"
     df_features.to_csv(output_path, index=False)
     print(f"Features geradas e salvas em: {output_path}")
+    print("=============================================================")
 
 
 if __name__ == "__main__":

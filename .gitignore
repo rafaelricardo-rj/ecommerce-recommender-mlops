@@ -11,5 +11,11 @@ models/
 mlruns/
 .env
 
+# MLflow local database (gerado automaticamente, pode ser grande)
+mlflow.db
+
+# Configurações do IDE/agente
+.gemini/
+
 #FIAP Docs
 Tech Challenge Fase 02.pdf
