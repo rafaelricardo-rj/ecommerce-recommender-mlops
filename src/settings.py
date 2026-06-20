@@ -63,6 +63,24 @@ class TrainingSettings(BaseSettings):
     LR_SCHEDULER_FACTOR: float = 0.5
     LR_SCHEDULER_PATIENCE: int = 5
 
+    # --- Model Registry ---
+    REGISTRY_MLP_NAME: str = "ecommerce-recommender-mlp"
+    REGISTRY_LR_NAME: str = "ecommerce-recommender-lr"
+    REGISTRY_MLP_DESCRIPTION: str = (
+        "Rede Neural MLP para predição de transações em e-commerce. "
+        "Arquitetura: Linear → BatchNorm → ReLU → Dropout com Early Stopping."
+    )
+    REGISTRY_LR_DESCRIPTION: str = (
+        "Regressão Linear (baseline) para predição de transações. "
+        "Modelo simples usado como referência de comparação."
+    )
+    REGISTRY_MODEL_TAGS: dict[str, str] = {
+        "team": "mlops-fiap",
+        "domain": "e-commerce",
+        "task": "transaction-prediction",
+        "data_source": "retailrocket",
+    }
+
     # Configuração interna do Pydantic para ler o arquivo .env
     model_config = SettingsConfigDict(
         env_file=".env",
