@@ -9,7 +9,7 @@ stages:
       size: 94237913
     - path: src/preprocess.py
       hash: md5
-      md5: 6857393d017b13050997763a9287981a
+      md5: dd51c6742a60fea25a80339487cd4c26
       size: 1070
     - path: src/utils.py
       hash: md5
@@ -29,8 +29,8 @@ stages:
       size: 47542640
     - path: src/feature_eng.py
       hash: md5
-      md5: ff61c803a3c69b57f8000bf51b4892f6
-      size: 1598
+      md5: 4624534ff583770b50923312d580283b
+      size: 1596
     - path: src/utils.py
       hash: md5
       md5: 869c1cfa66cdf7be60dc0c817fedd9c3
@@ -47,12 +47,24 @@ stages:
       hash: md5
       md5: 9e3beb60afc2998b70f94050a73d8a34
       size: 3288402
+    - path: src/models.py
+      hash: md5
+      md5: bed06a7024ff4dfc89225a53e030cadc
+      size: 4869
+    - path: src/settings.py
+      hash: md5
+      md5: d60daab227682e36680ade4f3c3136b2
+      size: 2842
     - path: src/train.py
       hash: md5
-      md5: b4f3e2d44ce752859772325e1de5f8c3
-      size: 1628
+      md5: 7e61c01b2547d652443b38a6f4dc7e40
+      size: 17301
     outs:
-    - path: models/recommender_model.pth
+    - path: models/LR_recommender_model.joblib
       hash: md5
-      md5: ed3d6671fd2f02e5f5e27cf54dd656ef
-      size: 2881
+      md5: e7ffe8e6c5926e566304beb4aa225e97
+      size: 601
+    - path: models/MLP_recommender_model.pth
+      hash: md5
+      md5: ce0cfdbc1de19e3dc2861900bcf2759e
+      size: 21300

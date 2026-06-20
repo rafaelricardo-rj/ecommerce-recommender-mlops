@@ -17,7 +17,6 @@ def main() -> None:
     output_dir = Path("data/processed")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print("=============================================================")
     print("Carregando dados brutos...")
     df = load_data(input_path)
 
@@ -27,6 +26,7 @@ def main() -> None:
     output_path = output_dir / "events_clean.csv"
     df_clean.to_csv(output_path, index=False)
     print(f"Dados limpos salvos em: {output_path}")
+    print("=============================================================")
 
 
 if __name__ == "__main__":

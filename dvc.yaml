@@ -21,6 +21,9 @@ stages:
     cmd: uv run python src/train.py
     deps:
       - src/train.py
+      - src/models.py
+      - src/settings.py
       - data/features/user_features.csv
     outs:
-      - models/recommender_model.pth
+      - models/MLP_recommender_model.pth
+      - models/LR_recommender_model.joblib
