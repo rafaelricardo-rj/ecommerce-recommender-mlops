@@ -803,6 +803,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "dvc" },
     { name = "mlflow" },
+    { name = "pandas" },
     { name = "pydantic-settings" },
     { name = "scikit-learn" },
     { name = "torch" },
@@ -819,6 +820,7 @@ dev = [
 requires-dist = [
     { name = "dvc", specifier = ">=3.67.1" },
     { name = "mlflow", specifier = ">=3.12.0" },
+    { name = "pandas", specifier = ">=2.3.3" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "torch", specifier = ">=2.12.0" },

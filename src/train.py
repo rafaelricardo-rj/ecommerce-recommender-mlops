@@ -20,9 +20,11 @@ import torch.optim as optim
 import mlflow
 import mlflow.pytorch
 import numpy as np
+import pandas as pd
 import joblib
 
 from pathlib import Path
+from mlflow.models import infer_signature
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
@@ -31,6 +33,7 @@ from models import ModelFactory
 from settings import get_settings
 from utils import load_data
 
+from registry import register_and_promote
 
 # ═══════════════════════════════════════════════════════════
 #  1. PREPARAÇÃO DE DADOS
@@ -199,9 +202,20 @@ def train_baseline(
     predictions = baseline.predict(x_val)
     metrics = calculate_metrics(y_val, predictions)
 
-    # Registra no MLflow
+    # Cria schema de entrada/saída para o registro
+    signature = infer_signature(x_val, predictions)
+    feature_columns = get_settings().FEATURE_COLUMNS
+    input_example = pd.DataFrame(x_val[:2], columns=feature_columns)
+
+    # Registra no MLflow (com e sem prefixo para identificação + canônico para Registry)
     mlflow.log_metrics({f"lr_{k}": v for k, v in metrics.items()})
-    mlflow.sklearn.log_model(baseline, "linear_regression_model")
+    mlflow.log_metrics(metrics)
+    mlflow.sklearn.log_model(
+        baseline,
+        "linear_regression_model",
+        signature=signature,
+        input_example=input_example,
+    )
     save_model(baseline, "LR_recommender_model.joblib")
 
     _print_metrics("Linear Regression (validação)", metrics)
@@ -399,23 +413,12 @@ def _evaluate_model_on_validation(
     return calculate_metrics(y_val.numpy(), predictions)
 
 
-def log_nn_to_mlflow(
-    model: nn.Module,
-    metrics: dict[str, float],
-) -> None:
-    """Registra o modelo MLP e suas métricas no MLflow.
-
-    Args:
-        model: Modelo treinado a ser registrado.
-        metrics: Dicionário de métricas a serem logadas.
-    """
+def _log_mlp_hyperparams() -> None:
+    """Loga os hiperparâmetros da MLP no MLflow."""
     settings = get_settings()
-    input_size = len(settings.FEATURE_COLUMNS)
-
-    # Loga hiperparâmetros
     mlflow.log_params(
         {
-            "input_size": input_size,
+            "input_size": len(settings.FEATURE_COLUMNS),
             "hidden_sizes": str(settings.HIDDEN_SIZES),
             "dropout_rate": settings.DROPOUT_RATE,
             "learning_rate": settings.LEARNING_RATE,
@@ -427,12 +430,40 @@ def log_nn_to_mlflow(
         }
     )
 
-    # Loga métricas finais
-    mlflow.log_metrics({f"mlp_{k}": v for k, v in metrics.items()})
 
-    # Salva e registra o modelo
+def log_nn_to_mlflow(
+    model: nn.Module,
+    metrics: dict[str, float],
+    x_val: torch.Tensor,
+) -> None:
+    """Registra o modelo MLP e suas métricas no MLflow.
+
+    Args:
+        model: Modelo treinado a ser registrado.
+        metrics: Dicionário de métricas a serem logadas.
+        x_val: Tensor de features de validação para criar a signature.
+    """
+    _log_mlp_hyperparams()
+
+    # Loga métricas finais (com e sem prefixo para identificação + canônico para Registry)
+    mlflow.log_metrics({f"mlp_{k}": v for k, v in metrics.items()})
+    mlflow.log_metrics(metrics)
+
+    # Cria schema de entrada/saída para o registro
+    model.eval()
+    with torch.no_grad():
+        sample_predictions = model(x_val[:2]).numpy()
+    signature = infer_signature(x_val[:2].numpy(), sample_predictions)
+    input_example = x_val[:2].numpy()
+
+    # Salva e registra o modelo com signature
     model_path = save_model(model, "MLP_recommender_model.pth")
-    mlflow.pytorch.log_model(model, "MLP_model")
+    mlflow.pytorch.log_model(
+        model,
+        "MLP_model",
+        signature=signature,
+        input_example=input_example,
+    )
     mlflow.log_artifact(str(model_path))
 
 
@@ -485,12 +516,28 @@ def main() -> None:
     mlflow.set_experiment(settings.MLFLOW_EXPERIMENT_NAME)
 
     # ── 1. Regressão Linear (Baseline) ──
-    with mlflow.start_run(run_name="linear_regression_v2"):
+    with mlflow.start_run(run_name="linear_regression_v2") as run:
         print(">> Treinando Linear Regression...")
-        train_baseline(x_train, y_train, x_val, y_val)
+        lr_metrics = train_baseline(x_train, y_train, x_val, y_val)
+
+        register_and_promote(
+            run_id=run.info.run_id,
+            artifact_path="linear_regression_model",
+            registry_name=settings.REGISTRY_LR_NAME,
+            new_metrics=lr_metrics,
+            description=settings.REGISTRY_LR_DESCRIPTION,
+            tags={
+                "model_type": "LinearRegression",
+                "framework": "sklearn",
+                "features": ", ".join(settings.FEATURE_COLUMNS),
+                "target": settings.TARGET_COLUMN,
+                "scaler": "StandardScaler",
+            },
+            model_tags=settings.REGISTRY_MODEL_TAGS,
+        )
 
     # ── 2. Rede Neural MLP ──
-    with mlflow.start_run(run_name="MLP_v2"):
+    with mlflow.start_run(run_name="MLP_v2") as run:
         print("\n>> Treinando MLP...")
         model, metrics = train_neural_network(
             x_train_tensor,
@@ -498,7 +545,27 @@ def main() -> None:
             x_val_tensor,
             y_val_tensor,
         )
-        log_nn_to_mlflow(model, metrics)
+        log_nn_to_mlflow(model, metrics, x_val_tensor)
+
+        register_and_promote(
+            run_id=run.info.run_id,
+            artifact_path="MLP_model",
+            registry_name=settings.REGISTRY_MLP_NAME,
+            new_metrics=metrics,
+            description=settings.REGISTRY_MLP_DESCRIPTION,
+            tags={
+                "model_type": "MLP",
+                "framework": "pytorch",
+                "features": ", ".join(settings.FEATURE_COLUMNS),
+                "target": settings.TARGET_COLUMN,
+                "scaler": "StandardScaler",
+                "architecture": f"[{', '.join(map(str, settings.HIDDEN_SIZES))}]\u21921",
+                "early_stopping": f"patience={settings.PATIENCE}",
+                "optimizer": "Adam",
+                "loss_function": "MSELoss",
+            },
+            model_tags=settings.REGISTRY_MODEL_TAGS,
+        )
 
     print("\n[OK] Treinamento concluido com sucesso!")
     print("=" * 60)
