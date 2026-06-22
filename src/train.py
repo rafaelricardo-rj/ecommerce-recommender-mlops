@@ -14,6 +14,9 @@ Uso:
     uv run python src/train.py
 """
 
+import os
+import random
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -484,6 +487,38 @@ def _print_metrics(model_name: str, metrics: dict[str, float]) -> None:
         print(f"   {name.upper():>6}: {value:.6f}")
 
 
+def _log_model_card_artifact() -> None:
+    """Anexa docs/model_card.md ao run ativo do MLflow, se o arquivo existir.
+
+    O caminho é resolvido a partir da localização deste módulo (src/train.py),
+    para funcionar independente do diretório de execução.
+    """
+    model_card_path = Path(__file__).resolve().parent.parent / "docs" / "model_card.md"
+    if model_card_path.exists():
+        mlflow.log_artifact(str(model_card_path))
+
+
+def _set_deterministic(seed: int) -> None:
+    """Fixa todas as fontes de aleatoriedade para reprodutibilidade entre runs.
+
+    A seed em `settings.RANDOM_SEED` cobre apenas o split do sklearn por padrão.
+    Para garantir que treinos consecutivos do PyTorch gerem o mesmo modelo
+    (requisito do critério de promoção do Registry baseado em comparação de
+    métricas), é necessário fixar adicionalmente Python `random`, NumPy, PyTorch
+    CPU/CUDA e o backend cuDNN.
+
+    Args:
+        seed: Semente inteira aplicada a todos os RNGs.
+    """
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+
 # ═══════════════════════════════════════════════════════════
 #  7. ORQUESTRADOR PRINCIPAL
 # ═══════════════════════════════════════════════════════════
@@ -493,12 +528,14 @@ def main() -> None:
     """Executa o pipeline completo de treinamento.
 
     Fluxo:
-        1. Carrega e prepara os dados.
-        2. Treina Regressão Linear (baseline) com MLflow tracking.
-        3. Treina MLP (rede neural) com MLflow tracking.
-        4. Exibe resumo final.
+        1. Fixa seeds para reprodutibilidade.
+        2. Carrega e prepara os dados.
+        3. Treina Regressão Linear (baseline) com MLflow tracking.
+        4. Treina MLP (rede neural) com MLflow tracking.
+        5. Exibe resumo final.
     """
     settings = get_settings()
+    _set_deterministic(settings.RANDOM_SEED)
 
     # ── Preparação dos dados ──
     x_train, x_val, y_train, y_val = prepare_data(
@@ -519,6 +556,7 @@ def main() -> None:
     with mlflow.start_run(run_name="linear_regression_v2") as run:
         print(">> Treinando Linear Regression...")
         lr_metrics = train_baseline(x_train, y_train, x_val, y_val)
+        _log_model_card_artifact()
 
         register_and_promote(
             run_id=run.info.run_id,
@@ -546,6 +584,7 @@ def main() -> None:
             y_val_tensor,
         )
         log_nn_to_mlflow(model, metrics, x_val_tensor)
+        _log_model_card_artifact()
 
         register_and_promote(
             run_id=run.info.run_id,
