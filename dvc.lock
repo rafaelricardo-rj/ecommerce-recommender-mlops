@@ -53,12 +53,12 @@ stages:
       size: 4724
     - path: src/settings.py
       hash: md5
-      md5: 7f0588c538ecd01221e6f814b4eab05c
-      size: 3561
+      md5: 6cb6a8b360dfc1b2df89d781c21b6b95
+      size: 3659
     - path: src/train.py
       hash: md5
-      md5: 1c804f42b12dcdbf6c10ecccad0a1050
-      size: 20537
+      md5: eaf24a23496176526cf2917145ebf32b
+      size: 21062
     outs:
     - path: models/LR_recommender_model.joblib
       hash: md5
@@ -66,5 +66,5 @@ stages:
       size: 601
     - path: models/MLP_recommender_model.pth
       hash: md5
-      md5: 073c63b9c40d7b3ef485cf8edadaf214
+      md5: 0cbb71cf839630d3d99b398f8f440d00
       size: 21300

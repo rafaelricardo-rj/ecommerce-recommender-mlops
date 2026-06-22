@@ -59,26 +59,26 @@ Cientistas de dados e engenheiros de ML do time, no contexto do Tech Challenge F
 
 ## 4. Métricas de performance
 
-Os números abaixo foram obtidos no conjunto de **validação** (20% dos usuários filtrados) em execução do pipeline em **2026-06-22** com `RANDOM_SEED=42`. Reprodutível via `uv run dvc repro`.
+Os números abaixo referem-se às versões atualmente em **Production** no MLflow Registry, obtidos no conjunto de **validação** (20% dos usuários filtrados). Execução em **2026-06-22**, `RANDOM_SEED=42`. Reprodutível via `uv run dvc repro` (mas ver Seção 5.8 sobre não-determinismo).
 
 | Métrica | Linear Regression (baseline) | MLP (PyTorch) | Vencedor |
 |---|---|---|---|
-| **MSE** ↓ | **0,6039** | 0,7306 | LR |
-| **RMSE** ↓ | **0,7771** | 0,8548 | LR |
-| **MAE** ↓ | 0,2170 | **0,1398** | MLP |
-| **R²** ↑ | **0,7469** | 0,6938 | LR |
+| **MSE** ↓ | 0,6039 | **0,5359** | MLP |
+| **RMSE** ↓ | 0,7771 | **0,7321** | MLP |
+| **MAE** ↓ | 0,2170 | **0,1234** | MLP |
+| **R²** ↑ | 0,7469 | **0,7754** | MLP |
 
 (↓ menor é melhor, ↑ maior é melhor.)
 
 ### Interpretação honesta
 
-A **regressão linear venceu a MLP em 3 das 4 métricas** (MSE, RMSE, R²). A MLP só apresenta vantagem em MAE, sugerindo predições mais centradas na mediana — comportamento esperado de redes com regularização forte (Dropout 0,3 + BatchNorm) quando o sinal é fraco.
+A MLP venceu o baseline em todas as 4 métricas, com ganho expressivo no MAE (43% menor: 0,123 vs 0,217) e R² superior (0,775 vs 0,747). A vantagem em RMSE/MSE é mais modesta (~6%), sugerindo que a MLP captura padrões úteis para predições típicas (refletido no MAE), mas tem pouco a oferecer onde a relação já é aproximadamente linear (RMSE penaliza erros grandes ao quadrado).
 
-Esse resultado não é surpreendente dada a configuração atual: com apenas **2 features de entrada** (`view`, `addtocart`), a relação com o target (`transaction`) é aproximadamente linear, e a capacidade extra da MLP (3 camadas ocultas, 64→32→16) não encontra estrutura adicional para explorar. Ver Seção 5 para discussão completa.
+Importante: **a magnitude dessa vantagem depende de qual run da MLP é considerado**. Em uma execução anterior do mesmo pipeline, com seed e hyperparâmetros idênticos, a MLP **perdeu** para a regressão linear em MSE/RMSE/R² (ver Seção 5.8). Treinos individuais não são reprodutíveis bit-a-bit, e qualquer afirmação categórica sobre superioridade da MLP precisa de **múltiplas runs com seeds variadas** e teste estatístico — não feito nesta versão.
 
 ### Hyperparâmetros usados na MLP (run em Production)
 - `hidden_sizes=[64, 32, 16]`, `dropout_rate=0.3`, `learning_rate=1e-3`, `epochs_max=300`, `patience=15`, `min_delta=1e-4`, `lr_scheduler_factor=0.5`, `lr_scheduler_patience=5`
-- Treinamento encerrado por **Early Stopping na época 81** (best `val_loss=0.6852`).
+- Otimizador: Adam. Loss: MSELoss. Treinamento encerrado por Early Stopping antes do máximo de épocas.
 
 ## 5. Limitações
 
@@ -103,6 +103,24 @@ O `preprocess.py` remove usuários com `<3` interações. Isso elimina a maior p
 ### 5.7 Ambiente Windows
 O código atual contém caracteres Unicode em `print()` (ex.: `→` em `src/registry.py:155` e `src/train.py:562`) que causam `UnicodeEncodeError` em terminais Windows com codepage `cp1252` padrão. Workaround: setar `$env:PYTHONIOENCODING="utf-8"` antes de executar.
 
+### 5.8 Não-determinismo do PyTorch
+Mesmo com `RANDOM_SEED=42` em `settings.py`, o treinamento da MLP **não é reprodutível bit-a-bit entre execuções**. Em duas execuções consecutivas do mesmo `dvc repro train`, os RMSEs da MLP foram 0,8548 e 0,7321 (variação de ~17%). Causas prováveis:
+- A seed configurada via `train_test_split(random_state=...)` afeta apenas o split do sklearn, não o treinamento do PyTorch.
+- Falta de `torch.manual_seed(...)`, `torch.cuda.manual_seed_all(...)`, `numpy.random.seed(...)` e `torch.use_deterministic_algorithms(True)`.
+- Operações não-determinísticas em cuDNN/MKL não estão desabilitadas.
+
+**Implicação prática**: o critério automático de promoção do Registry (compara RMSE da nova versão com a atual em Production) pode promover ou rebaixar modelos por puro acaso, não por mérito. Recomenda-se fixar todas as seeds e executar múltiplas runs antes de comparar.
+
+### 5.9 Bug no critério de promoção: versões não-arquivadas
+Em `src/registry.py:148-154`, `promote_model()` chama `client.transition_model_version_stage(...)` sem o argumento `archive_existing_versions=True`. Resultado: quando uma nova versão é promovida para `Production`, a versão anterior **permanece em `Production`** em paralelo, em vez de ser arquivada. Estado atual observado no Registry:
+
+```
+ecommerce-recommender-mlp v1 -> Production   (run antigo)
+ecommerce-recommender-mlp v2 -> Production   (run novo, deveria ter arquivado v1)
+```
+
+Isso quebra a expectativa de que `Production` referencie um único modelo de cada nome. Fix: passar `archive_existing_versions=True` na chamada acima.
+
 ## 6. Vieses e considerações éticas
 
 ### Vieses identificados
@@ -118,31 +136,35 @@ O código atual contém caracteres Unicode em `print()` (ex.: `→` em `src/regi
 ## 7. MLflow Tracking e Registry
 
 ### Experimentos rastreados
-Experimento `ecommerce_recommender` no MLflow contém 3 runs:
+Experimento `ecommerce_recommender` no MLflow Tracking (5 runs ao todo, satisfazendo com folga o critério "≥ 3 runs rastreados"):
 
-| Run name | Status | Tipo | RMSE |
-|---|---|---|---|
-| `linear_regression_v2` (primeira tentativa) | FAILED | LR | 0,7771 |
-| `linear_regression_v2` | FINISHED | LR | 0,7771 |
-| `MLP_v2` | FINISHED | MLP | 0,8548 |
-
-> A primeira run de LR falhou por bug Unicode (ver Seção 5.7), mas suas métricas e artefatos foram persistidos pelo MLflow antes do crash. Isto satisfaz o critério "≥ 3 runs rastreados" definido pelos requisitos do projeto.
+| Run name | Status | Tipo | RMSE | Observação |
+|---|---|---|---|---|
+| `linear_regression_v2` (1ª tentativa) | FAILED | LR | 0,7771 | Crash Unicode após log de métricas/artefatos (Seção 5.7) |
+| `linear_regression_v2` | FINISHED | LR | 0,7771 | Re-run |
+| `MLP_v2` | FINISHED | MLP | 0,8548 | Run inicial; perdia da LR em 3/4 métricas |
+| `linear_regression_v2` | FINISHED | LR | 0,7771 | Re-run após edição de `train.py` para anexar Model Card |
+| `MLP_v2` | FINISHED | MLP | **0,7321** | Run atual em Production; vence a LR em todas as métricas (não-determinismo: Seção 5.8) |
 
 ### Modelos registrados
 
 ```
 ecommerce-recommender-lr
-├── v1  →  Production  (run FAILED; promovida automaticamente por ser a primeira)
-└── v2  →  Staging     (run FINISHED; RMSE empatado com v1, não promovida)
+├── v1  →  Production   (run FAILED; promovida automaticamente por ser a primeira)
+├── v2  →  Staging      (RMSE empatado com v1, regra "estritamente menor" impede promoção)
+└── v3  →  Staging      (idem)
 
 ecommerce-recommender-mlp
-└── v1  →  Production  (primeira versão registrada)
+├── v1  →  Production   (run inicial; deveria ter sido arquivada — ver Seção 5.9)
+└── v2  →  Production   (versão mais recente, melhor RMSE)
 ```
 
-> **Observação operacional**: a versão em Production do `ecommerce-recommender-lr` aponta para um run com `status=FAILED`. Isso ocorreu porque o crash de Unicode aconteceu **após** o registro/promoção do modelo, e a lógica de `register_and_promote` não distingue runs com falha. Recomenda-se em uma próxima iteração filtrar runs por `status=FINISHED` antes de promover.
+> **Observações operacionais:**
+> - A v1 do `ecommerce-recommender-lr` em Production aponta para um run com `status=FAILED`. O crash de Unicode ocorreu **após** o registro/promoção, e a lógica de promoção não distingue runs com falha. Recomenda-se filtrar por `status=FINISHED` antes de promover.
+> - O Registry da MLP tem **duas versões em Production simultaneamente** devido ao bug descrito na Seção 5.9.
 
 ### Critério de promoção
-`src/registry.py` promove a nova versão para `Production` apenas se o **RMSE for estritamente menor** que o RMSE do modelo atualmente em Production (`lower_is_better=True`). Caso contrário, a versão fica em `Staging`. Comparação por modelo registrado (LR contra LR, MLP contra MLP) — os dois não competem entre si no Registry.
+`src/registry.py:register_and_promote()` promove a nova versão para `Production` apenas se o **RMSE for estritamente menor** (`<`) que o RMSE da versão atual em Production (`lower_is_better=True`). Caso contrário, a versão fica em `Staging`. Comparação ocorre por nome de modelo registrado — LR competindo só contra LR, MLP só contra MLP. Como discutido na Seção 5.8, esse critério é frágil em face do não-determinismo do PyTorch.
 
 ## 8. Como reproduzir
 
@@ -173,5 +195,7 @@ Em ordem de impacto esperado:
 2. **Mudar o problema para classificação binária** (`converted = transaction > 0`) e usar `BCEWithLogitsLoss`. Isso resolve a Seção 5.1 e permite métricas mais informativas (precision, recall, F1, ROC-AUC).
 3. **Corte temporal no split** treino/teste para mitigar o data leakage da Seção 5.3.
 4. **Adicionar baselines clássicos de RecSys**: popularity, item-KNN, ALS (matrix factorization). Comparação mais justa para um "sistema de recomendação".
-5. **Filtrar runs `status=FAILED`** na lógica de promoção (`src/registry.py`).
-6. **Normalizar prints** removendo caracteres Unicode ou definir `PYTHONIOENCODING=utf-8` no `.env` carregado pelo pipeline.
+5. **Fixar determinismo do PyTorch** (Seção 5.8): `torch.manual_seed`, `np.random.seed`, `torch.use_deterministic_algorithms(True)`, `CUBLAS_WORKSPACE_CONFIG=:4096:8`.
+6. **Passar `archive_existing_versions=True`** em `client.transition_model_version_stage(...)` para corrigir o bug da Seção 5.9.
+7. **Filtrar runs `status=FAILED`** na lógica de promoção (`src/registry.py`).
+8. **Normalizar prints** removendo caracteres Unicode ou definir `PYTHONIOENCODING=utf-8` no `.env` carregado pelo pipeline.

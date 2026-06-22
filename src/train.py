@@ -484,6 +484,17 @@ def _print_metrics(model_name: str, metrics: dict[str, float]) -> None:
         print(f"   {name.upper():>6}: {value:.6f}")
 
 
+def _log_model_card_artifact() -> None:
+    """Anexa docs/model_card.md ao run ativo do MLflow, se o arquivo existir.
+
+    O caminho é resolvido a partir da localização deste módulo (src/train.py),
+    para funcionar independente do diretório de execução.
+    """
+    model_card_path = Path(__file__).resolve().parent.parent / "docs" / "model_card.md"
+    if model_card_path.exists():
+        mlflow.log_artifact(str(model_card_path))
+
+
 # ═══════════════════════════════════════════════════════════
 #  7. ORQUESTRADOR PRINCIPAL
 # ═══════════════════════════════════════════════════════════
@@ -519,6 +530,7 @@ def main() -> None:
     with mlflow.start_run(run_name="linear_regression_v2") as run:
         print(">> Treinando Linear Regression...")
         lr_metrics = train_baseline(x_train, y_train, x_val, y_val)
+        _log_model_card_artifact()
 
         register_and_promote(
             run_id=run.info.run_id,
@@ -546,6 +558,7 @@ def main() -> None:
             y_val_tensor,
         )
         log_nn_to_mlflow(model, metrics, x_val_tensor)
+        _log_model_card_artifact()
 
         register_and_promote(
             run_id=run.info.run_id,
