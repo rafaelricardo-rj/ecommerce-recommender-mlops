@@ -66,6 +66,9 @@ class TrainingSettings(BaseSettings):
     # --- Model Registry ---
     REGISTRY_MLP_NAME: str = "ecommerce-recommender-mlp"
     REGISTRY_LR_NAME: str = "ecommerce-recommender-lr"
+    REGISTRY_DUMMY_NAME: str = "ecommerce-recommender-dummy"
+    REGISTRY_KNN_NAME: str = "ecommerce-recommender-knn"
+    REGISTRY_RF_NAME: str = "ecommerce-recommender-rf"
     REGISTRY_MLP_DESCRIPTION: str = (
         "Rede Neural MLP para predição de transações em e-commerce. "
         "Arquitetura: Linear → BatchNorm → ReLU → Dropout com Early Stopping."
@@ -73,6 +76,18 @@ class TrainingSettings(BaseSettings):
     REGISTRY_LR_DESCRIPTION: str = (
         "Regressão Linear (baseline) para predição de transações. "
         "Modelo simples usado como referência de comparação."
+    )
+    REGISTRY_DUMMY_DESCRIPTION: str = (
+        "DummyRegressor (sanity check) que sempre prediz a média do target. "
+        "Limite inferior absoluto — qualquer modelo útil deve superá-lo."
+    )
+    REGISTRY_KNN_DESCRIPTION: str = (
+        "K-Nearest Neighbors Regressor (k=5) — baseline não-paramétrico "
+        "baseado em vizinhança local no espaço de features padronizado."
+    )
+    REGISTRY_RF_DESCRIPTION: str = (
+        "Random Forest Regressor (100 árvores, random_state=42) — baseline "
+        "ensemble que captura não-linearidades sem treinamento iterativo."
     )
     REGISTRY_MODEL_TAGS: dict[str, str] = {
         "team": "mlops-fiap",
