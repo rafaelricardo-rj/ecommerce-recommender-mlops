@@ -141,6 +141,10 @@ def promote_model(
 
     Estágios possíveis: "Staging", "Production", "Archived".
 
+    Versões anteriores no mesmo estágio são automaticamente arquivadas via
+    `archive_existing_versions=True`, garantindo que cada estágio (Staging /
+    Production) referencie no máximo uma versão do modelo de cada vez.
+
     Args:
         registry_name: Nome do modelo no Registry.
         version: Número da versão a ser promovida.
@@ -151,6 +155,7 @@ def promote_model(
         name=registry_name,
         version=version,
         stage=stage,
+        archive_existing_versions=True,
     )
     print(f"Modelo {registry_name} v{version} → {stage}")
 
