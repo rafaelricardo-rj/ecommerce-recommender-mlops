@@ -23,7 +23,13 @@ stages:
       - src/train.py
       - src/models.py
       - src/settings.py
+      - src/registry.py
+      - src/utils.py
       - data/features/user_features.csv
     outs:
-      - models/MLP_recommender_model.pth
+      # Ordem espelha a execução em src/train.py:main()
+      - models/Dummy_recommender_model.joblib
       - models/LR_recommender_model.joblib
+      - models/KNN_recommender_model.joblib
+      - models/RF_recommender_model.joblib
+      - models/MLP_recommender_model.pth
