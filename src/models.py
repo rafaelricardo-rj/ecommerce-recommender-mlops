@@ -4,14 +4,25 @@ Contém a rede neural MLP para recomendação e a Factory responsável
 por instanciar qualquer modelo do projeto de forma desacoplada.
 
 Design Pattern utilizado:
-    Factory Pattern — permite criar modelos diferentes (MLP, Linear
-    Regression) sem que o código de treinamento precise conhecer
-    os detalhes internos de cada um.
+    Factory Pattern — permite criar modelos diferentes (MLP + baselines
+    sklearn) sem que o código de treinamento precise conhecer os detalhes
+    internos de cada um.
+
+Modelos suportados pelo Factory:
+    - "MLP": rede neural RecommenderMLP (PyTorch) — modelo principal.
+    - "linear_regression": Regressão Linear (baseline paramétrico).
+    - "dummy_regressor": prediz a média do target (sanity check).
+    - "knn": K-Nearest Neighbors (baseline não-paramétrico).
+    - "random_forest": Random Forest (baseline ensemble).
 """
 
 import torch
 import torch.nn as nn
+from sklearn.base import BaseEstimator
+from sklearn.dummy import DummyRegressor
+from sklearn.ensemble import RandomForestRegressor
 from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import KNeighborsRegressor
 
 
 class RecommenderMLP(nn.Module):
@@ -94,23 +105,37 @@ class ModelFactory:
     de treinamento crie modelos sem conhecer suas classes diretamente.
 
     Modelos disponíveis:
-        - "MLP": Rede neural RecommenderMLP (PyTorch).
-        - "linear_regression": Regressão Linear (Scikit-Learn).
+        - "MLP": rede neural RecommenderMLP (PyTorch) — modelo principal.
+        - "linear_regression": Regressão Linear (sklearn) — baseline paramétrico.
+        - "dummy_regressor": prediz a média do target (sklearn) — sanity check.
+        - "knn": K-Nearest Neighbors (sklearn) — baseline não-paramétrico.
+        - "random_forest": Random Forest (sklearn) — baseline ensemble.
+
+    Os baselines sklearn são configurados com seeds fixadas onde aplicável,
+    para preservar a reprodutibilidade bit-a-bit garantida pelo pipeline.
 
     Example:
         >>> model = ModelFactory.create_model("MLP", input_size=2)
         >>> baseline = ModelFactory.create_model("linear_regression")
+        >>> dummy = ModelFactory.create_model("dummy_regressor")
     """
 
     @staticmethod
     def create_model(
         model_type: str,
         **kwargs: int | float | list[int],
-    ) -> nn.Module | LinearRegression:
+    ) -> nn.Module | BaseEstimator:
         """Cria e retorna uma instância do modelo solicitado.
 
+        Retorno é tipado como `nn.Module | BaseEstimator` — o caller sabe
+        qual ramo pegou via o parâmetro `model_type` que ele mesmo passou.
+        Todos os modelos sklearn aqui herdam de `sklearn.base.BaseEstimator`
+        e expõem `.fit` / `.predict`.
+
+
         Args:
-            model_type: Tipo do modelo ("MLP" ou "linear_regression").
+            model_type: Tipo do modelo. Um de:
+                "MLP", "linear_regression", "dummy_regressor", "knn", "random_forest".
             **kwargs: Argumentos passados ao construtor do modelo.
                 Para MLP: input_size, hidden_sizes, dropout_rate.
 
@@ -129,5 +154,18 @@ class ModelFactory:
 
         if model_type == "linear_regression":
             return LinearRegression()
+
+        if model_type == "dummy_regressor":
+            return DummyRegressor(strategy="mean")
+
+        if model_type == "knn":
+            return KNeighborsRegressor(n_neighbors=5, n_jobs=1)
+
+        if model_type == "random_forest":
+            return RandomForestRegressor(
+                n_estimators=100,
+                random_state=42,
+                n_jobs=1,
+            )
 
         raise ValueError(f"Tipo de modelo desconhecido: {model_type}")

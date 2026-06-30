@@ -1,14 +1,22 @@
 """Módulo principal de treinamento dos modelos de recomendação.
 
-Orquestra o treinamento de dois modelos:
-    1. Regressão Linear (baseline) — modelo simples para comparação.
-    2. MLP (rede neural) — modelo principal com Early Stopping e LR Scheduler.
+Orquestra o treinamento de cinco modelos em sequência:
+    1. Quatro baselines sklearn (DummyRegressor, LinearRegression, KNN, RandomForest)
+       treinados em loop sobre `_build_baseline_specs()`.
+    2. MLP (rede neural) — modelo principal exigido pelo Tech Challenge, com
+       Early Stopping e LR Scheduler.
 
 Todos os hiperparâmetros são carregados via Pydantic Settings (arquivo .env),
-e todos os experimentos são registrados automaticamente no MLflow.
+e todos os experimentos são registrados automaticamente no MLflow Tracking
+e no Model Registry (Staging → Production, comparado por RMSE).
 
 Fluxo de execução:
-    main() → prepare_data() → train_baseline() → train_neural_network() → log
+    main()
+      → _set_deterministic()         # fixa seeds
+      → prepare_data()                # carrega + escala + split
+      → for spec in _build_baseline_specs():
+            _run_sklearn_baseline()   # 1 run MLflow por baseline
+      → train_neural_network()        # MLP em run separado
 
 Uso:
     uv run python src/train.py
@@ -16,6 +24,7 @@ Uso:
 
 import os
 import random
+from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
@@ -174,55 +183,150 @@ def save_model(
 
 
 # ═══════════════════════════════════════════════════════════
-#  4. TREINAMENTO DA REGRESSÃO LINEAR (BASELINE)
+#  4. TREINAMENTO DOS BASELINES SKLEARN
 # ═══════════════════════════════════════════════════════════
 
 
-def train_baseline(
+@dataclass(frozen=True)
+class SklearnBaselineSpec:
+    """Configuração imutável de um baseline sklearn a ser treinado.
+
+    Centraliza os parâmetros que variam entre baselines para permitir um loop
+    único de treino sobre vários modelos sem duplicar código.
+
+    Attributes:
+        model_type: chave aceita por `ModelFactory.create_model`.
+        label: nome amigável usado em prints e logs.
+        run_name: nome do run no MLflow Tracking.
+        artifact_path: subdiretório do artefato dentro do run (MLflow).
+        model_filename: nome do arquivo no diretório `models/` em disco.
+        registry_name: nome do modelo registrado no MLflow Model Registry.
+        description: descrição longa exibida no Registry.
+        model_class_name: classe sklearn — usada como tag de versão.
+    """
+
+    model_type: str
+    label: str
+    run_name: str
+    artifact_path: str
+    model_filename: str
+    registry_name: str
+    description: str
+    model_class_name: str
+
+
+# Blueprints concisos dos baselines: (model_type, label, filename, settings_key, class_name).
+# A constante isolada da função builder mantém esta abaixo de 20 linhas.
+# Ordem reflete complexidade arquitetural crescente (constante → linear →
+# não-paramétrico → ensemble), NÃO performance esperada — o ranking real
+# por RMSE é documentado em docs/model_card.md (Seção 4).
+_BASELINE_BLUEPRINTS: list[tuple[str, str, str, str, str]] = [
+    ("dummy_regressor", "DummyRegressor (média)", "Dummy_recommender_model.joblib", "DUMMY", "DummyRegressor"),
+    ("linear_regression", "Linear Regression", "LR_recommender_model.joblib", "LR", "LinearRegression"),
+    ("knn", "KNN (k=5)", "KNN_recommender_model.joblib", "KNN", "KNeighborsRegressor"),
+    ("random_forest", "Random Forest", "RF_recommender_model.joblib", "RF", "RandomForestRegressor"),
+]
+
+
+def _build_baseline_specs() -> list[SklearnBaselineSpec]:
+    """Constrói a lista de SklearnBaselineSpec a partir dos blueprints."""
+    s = get_settings()
+    return [
+        SklearnBaselineSpec(
+            model_type=mt,
+            label=label,
+            run_name=f"{mt}_v1",
+            artifact_path=f"{mt}_model",
+            model_filename=filename,
+            registry_name=getattr(s, f"REGISTRY_{key}_NAME"),
+            description=getattr(s, f"REGISTRY_{key}_DESCRIPTION"),
+            model_class_name=cls,
+        )
+        for mt, label, filename, key, cls in _BASELINE_BLUEPRINTS
+    ]
+
+
+def _log_baseline_metrics(model_type: str, metrics: dict[str, float]) -> None:
+    """Loga métricas em dois formatos no run ativo.
+
+    Versão prefixada (`{model_type}_mse`, ...) identifica de qual modelo cada
+    métrica veio quando o experimento todo é visualizado na UI do Tracking.
+    Versão canônica (`mse`, ...) é o que `registry.py:get_production_metrics`
+    consulta para a comparação automática de promoção no Registry.
+    """
+    mlflow.log_metrics({f"{model_type}_{k}": v for k, v in metrics.items()})
+    mlflow.log_metrics(metrics)
+
+
+def train_and_log_sklearn_baseline(
+    spec: SklearnBaselineSpec,
     x_train: np.ndarray,
     y_train: np.ndarray,
     x_val: np.ndarray,
     y_val: np.ndarray,
 ) -> dict[str, float]:
-    """Treina Regressão Linear e avalia no conjunto de VALIDAÇÃO.
+    """Treina um baseline sklearn e registra modelo + métricas no MLflow.
 
-    Importante: o modelo é treinado em x_train/y_train mas as métricas
-    são calculadas em x_val/y_val, evitando data leakage.
-
-    Args:
-        x_train: Features de treino (escaladas).
-        y_train: Target de treino.
-        x_val: Features de validação (escaladas).
-        y_val: Target de validação.
+    Métricas são calculadas em x_val/y_val (não em x_train), evitando viés
+    de avaliação no próprio treino. Note: x_val já foi escalado por
+    StandardScaler — o `input_example` logado representa entrada escalada,
+    não dados brutos.
 
     Returns:
-        Dicionário com as métricas calculadas na validação.
+        Dicionário com as 4 métricas (mse, rmse, mae, r2) na validação.
     """
-    baseline = ModelFactory.create_model("linear_regression")
-    baseline.fit(x_train, y_train)
-
-    # Avalia na VALIDAÇÃO (não no treino) para métricas honestas
-    predictions = baseline.predict(x_val)
+    model = ModelFactory.create_model(spec.model_type)
+    model.fit(x_train, y_train)
+    predictions = model.predict(x_val)
     metrics = calculate_metrics(y_val, predictions)
 
-    # Cria schema de entrada/saída para o registro
-    signature = infer_signature(x_val, predictions)
     feature_columns = get_settings().FEATURE_COLUMNS
+    signature = infer_signature(x_val, predictions)
     input_example = pd.DataFrame(x_val[:2], columns=feature_columns)
 
-    # Registra no MLflow (com e sem prefixo para identificação + canônico para Registry)
-    mlflow.log_metrics({f"lr_{k}": v for k, v in metrics.items()})
-    mlflow.log_metrics(metrics)
+    _log_baseline_metrics(spec.model_type, metrics)
     mlflow.sklearn.log_model(
-        baseline,
-        "linear_regression_model",
-        signature=signature,
-        input_example=input_example,
+        model, spec.artifact_path, signature=signature, input_example=input_example,
     )
-    save_model(baseline, "LR_recommender_model.joblib")
-
-    _print_metrics("Linear Regression (validação)", metrics)
+    save_model(model, spec.model_filename)
+    _print_metrics(f"{spec.label} (validação)", metrics)
     return metrics
+
+
+def _build_baseline_tags(spec: SklearnBaselineSpec) -> dict[str, str]:
+    """Constrói as tags da versão do modelo registrado (sklearn)."""
+    settings = get_settings()
+    return {
+        "framework": "sklearn",
+        "features": ", ".join(settings.FEATURE_COLUMNS),
+        "target": settings.TARGET_COLUMN,
+        "scaler": "StandardScaler",
+        "model_type": spec.model_class_name,
+    }
+
+
+def _run_sklearn_baseline(
+    spec: SklearnBaselineSpec,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_val: np.ndarray,
+    y_val: np.ndarray,
+) -> None:
+    """Executa o ciclo completo de um baseline: start_run → train → register."""
+    settings = get_settings()
+    with mlflow.start_run(run_name=spec.run_name) as run:
+        print(f"\n>> Treinando {spec.label}...")
+        metrics = train_and_log_sklearn_baseline(spec, x_train, y_train, x_val, y_val)
+        _log_model_card_artifact()
+        register_and_promote(
+            run_id=run.info.run_id,
+            artifact_path=spec.artifact_path,
+            registry_name=spec.registry_name,
+            new_metrics=metrics,
+            description=spec.description,
+            tags=_build_baseline_tags(spec),
+            model_tags=settings.REGISTRY_MODEL_TAGS,
+        )
 
 
 # ═══════════════════════════════════════════════════════════
@@ -529,9 +633,10 @@ def main() -> None:
 
     Fluxo:
         1. Fixa seeds para reprodutibilidade.
-        2. Carrega e prepara os dados.
-        3. Treina Regressão Linear (baseline) com MLflow tracking.
-        4. Treina MLP (rede neural) com MLflow tracking.
+        2. Carrega e prepara os dados (split treino/validação).
+        3. Treina os 4 baselines sklearn em loop (Dummy → LR → KNN → RF),
+           cada um em seu próprio run MLflow + modelo registrado no Registry.
+        4. Treina a MLP (rede neural PyTorch) em run próprio com Early Stopping.
         5. Exibe resumo final.
     """
     settings = get_settings()
@@ -552,27 +657,9 @@ def main() -> None:
 
     mlflow.set_experiment(settings.MLFLOW_EXPERIMENT_NAME)
 
-    # ── 1. Regressão Linear (Baseline) ──
-    with mlflow.start_run(run_name="linear_regression_v2") as run:
-        print(">> Treinando Linear Regression...")
-        lr_metrics = train_baseline(x_train, y_train, x_val, y_val)
-        _log_model_card_artifact()
-
-        register_and_promote(
-            run_id=run.info.run_id,
-            artifact_path="linear_regression_model",
-            registry_name=settings.REGISTRY_LR_NAME,
-            new_metrics=lr_metrics,
-            description=settings.REGISTRY_LR_DESCRIPTION,
-            tags={
-                "model_type": "LinearRegression",
-                "framework": "sklearn",
-                "features": ", ".join(settings.FEATURE_COLUMNS),
-                "target": settings.TARGET_COLUMN,
-                "scaler": "StandardScaler",
-            },
-            model_tags=settings.REGISTRY_MODEL_TAGS,
-        )
+    # ── 1. Baselines sklearn (Dummy → LR → KNN → RandomForest) ──
+    for spec in _build_baseline_specs():
+        _run_sklearn_baseline(spec, x_train, y_train, x_val, y_val)
 
     # ── 2. Rede Neural MLP ──
     with mlflow.start_run(run_name="MLP_v2") as run:

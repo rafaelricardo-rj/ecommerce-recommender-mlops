@@ -49,17 +49,33 @@ stages:
       size: 3288402
     - path: src/models.py
       hash: md5
-      md5: 73ea1c25f36eb36df369800d44e1eaef
-      size: 4724
+      md5: 4fc6dfddee19f6d1300899dd07d22ce5
+      size: 6520
+    - path: src/registry.py
+      hash: md5
+      md5: 03b05700e3e134b0e3b945c13fa8d660
+      size: 8230
     - path: src/settings.py
       hash: md5
-      md5: 6cb6a8b360dfc1b2df89d781c21b6b95
-      size: 3659
+      md5: d871eb6a7b5f562a21435508043790a3
+      size: 4446
     - path: src/train.py
       hash: md5
-      md5: 8a2e77b171caa1def5a74afa0a7fb5e7
-      size: 22005
+      md5: e09af9bc76b95fbc6e10415d4d614d5b
+      size: 25931
+    - path: src/utils.py
+      hash: md5
+      md5: 869c1cfa66cdf7be60dc0c817fedd9c3
+      size: 203
     outs:
+    - path: models/Dummy_recommender_model.joblib
+      hash: md5
+      md5: c5c21dc05c3d5483632ac95a6bf81159
+      size: 415
+    - path: models/KNN_recommender_model.joblib
+      hash: md5
+      md5: 9a4472141d639b6a0fdff248e30a489b
+      size: 8206630
     - path: models/LR_recommender_model.joblib
       hash: md5
       md5: e7ffe8e6c5926e566304beb4aa225e97
@@ -68,3 +84,7 @@ stages:
       hash: md5
       md5: 76e7f96d61bee7594391edc99eb0e311
       size: 21300
+    - path: models/RF_recommender_model.joblib
+      hash: md5
+      md5: 74ef76a656f2d0f672498b6ef49e57f0
+      size: 9870145
