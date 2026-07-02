@@ -82,7 +82,7 @@ stages:
       size: 601
     - path: models/MLP_recommender_model.pth
       hash: md5
-      md5: 76e7f96d61bee7594391edc99eb0e311
+      md5: 029b37c6c289dbb94b653af68a4781d8
       size: 21300
     - path: models/RF_recommender_model.joblib
       hash: md5
