@@ -19,6 +19,3 @@ mlflow.db
 
 # FIAP Docs
 Tech Challenge Fase 02.pdf
-
-# google credentials for dvc
-dvc-service-account.json
