@@ -60,6 +60,8 @@ ecommerce-recommender-mlops/
 ├── .pre-commit-config.yaml   # Hooks de pre-commit (Ruff)
 ├── dvc.yaml                  # Pipeline DVC (3 stages)
 ├── dvc.lock                  # Lock do pipeline (hashes dos dados)
+├── Dockerfile                # Imagem Docker multi-stage do projeto
+├── docker-compose.yml        # Serviços de treino e MLflow Server
 └── pyproject.toml            # Dependências (prod + dev separadas)
 ```
 
@@ -129,6 +131,93 @@ uv run dvc repro
 ```bash
 uv run pytest
 ```
+## 🐳 Execução com Docker
+
+O projeto também pode ser executado em ambiente containerizado usando **Docker** e **Docker Compose**.
+
+Essa abordagem padroniza o ambiente de execução, reduz problemas de configuração entre diferentes máquinas e facilita a execução dos serviços necessários para o pipeline, como o servidor do MLflow e o serviço de treinamento.
+
+> Antes de executar os comandos abaixo, certifique-se de que o **Docker Desktop** está aberto e em execução.
+
+### Construir a imagem Docker
+
+```bash
+docker build -t ecommerce-recommender:dev .
+```
+
+Esse comando cria a imagem Docker do projeto a partir do `Dockerfile` multi-stage.
+
+### Validar o ambiente dentro do container
+
+```bash
+docker run --rm --env-file .env ecommerce-recommender:dev
+```
+
+Resultado esperado:
+
+```bash
+Ambiente validado com sucesso.
+DATA_DIR=data/
+MODEL_DIR=models/
+MLFLOW_TRACKING_URI=http://localhost:5000
+MLFLOW_EXPERIMENT_NAME=ecommerce_recommender
+```
+
+### Subir o MLflow Server com Docker Compose
+
+```bash
+docker compose up -d mlflow-server
+```
+
+Após o serviço iniciar, acesse a interface do MLflow em:
+
+```text
+http://localhost:5000
+```
+
+Para verificar se o container está em execução e saudável:
+
+```bash
+docker compose ps
+```
+
+### Validar o serviço de treino via Docker Compose
+
+```bash
+docker compose run --rm train python scripts/validate_env.py
+```
+
+Dentro do Docker Compose, o serviço de treino usa o endereço interno do MLflow:
+
+```bash
+MLFLOW_TRACKING_URI=http://mlflow-server:5000
+```
+
+Isso permite que o container de treinamento se comunique corretamente com o container do MLflow Server.
+
+### Executar o treinamento via Docker Compose
+
+Antes de executar o treinamento completo, garanta que os dados foram baixados com DVC:
+
+```bash
+uv run dvc pull
+```
+
+Depois, execute:
+
+```bash
+docker compose run --rm train
+```
+
+Esse comando executa primeiro a validação do ambiente e, em seguida, roda o script de treinamento definido em `src/train.py`.
+
+### Encerrar os containers
+
+```bash
+docker compose down
+```
+
+Esse comando encerra os containers criados pelo Docker Compose. O volume usado pelo MLflow permanece salvo, permitindo manter os dados de tracking entre execuções.
 
 ## 🔄 Pipeline DVC
 
