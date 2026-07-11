@@ -1,0 +1,110 @@
+# ci-cd.yml — Pipeline de integração e entrega contínua.
+#
+# Dois jobs:
+#   ci:     roda em todo PR e push — valida lint e testes.
+#   deploy: roda apenas no merge à main — baixa dados via DVC, treina,
+#           registra no MLflow Registry e sobe o MLflow Server na VPS.
+#
+# Segredos necessários (configurar em Settings → Secrets and variables → Actions):
+#   VPS_HOST         → IP ou hostname da VPS
+#   VPS_USER         → usuário SSH
+#   VPS_SSH_KEY      → chave privada SSH (conteúdo do arquivo ~/.ssh/id_rsa)
+#   VPS_PROJECT_PATH → caminho do projeto na VPS (ex: /home/usuario/ecommerce-recommender-mlops)
+
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Integração Contínua
+  # Roda em todo PR e push para garantir que o código está correto antes do merge.
+  # ---------------------------------------------------------------------------
+  ci:
+    name: Lint e Testes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+
+      - name: Instalar dependências
+        run: uv sync --all-groups
+
+      - name: Lint (ruff)
+        run: uv run ruff check .
+
+      - name: Testes (pytest)
+        run: uv run pytest
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Deploy
+  # Roda apenas quando há push direto na main (ou seja, após um PR ser aprovado
+  # e mergeado). Depende do job ci — se os testes falharem, o deploy não acontece.
+  # ---------------------------------------------------------------------------
+  deploy:
+    name: Deploy na VPS
+    needs: ci
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Executar pipeline na VPS via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          # O treino pode levar alguns minutos; aumentamos o timeout.
+          command_timeout: 30m
+          # set -e: interrompe o script imediatamente se qualquer comando falhar.
+          script: |
+            set -e
+            PROJECT_PATH="${{ secrets.VPS_PROJECT_PATH }}"
+            REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
+
+            echo "--- Verificando repositório ---"
+            # Clona o repositório na primeira execução; nas seguintes, apenas atualiza.
+            if [ ! -d "$PROJECT_PATH/.git" ]; then
+              echo "Repositório não encontrado. Clonando..."
+              git clone "$REPO_URL" "$PROJECT_PATH"
+            fi
+            cd "$PROJECT_PATH"
+            git pull origin main
+
+            echo "--- Configurando ambiente ---"
+            # .env não é versionado; criado a partir do template na primeira execução.
+            [ -f .env ] || cp .env.example .env
+
+            echo "--- Construindo imagens ---"
+            docker compose -f docker-compose.prod.yml build
+
+            echo "--- Iniciando MLflow (se não estiver rodando) ---"
+            # up -d é idempotente: não reinicia um container já em execução.
+            docker compose -f docker-compose.prod.yml up -d mlflow-server
+
+            echo "--- Baixando dados e modelos via DVC ---"
+            # O container 'train' já tem o DVC instalado (dependência do projeto).
+            # As credenciais são gravadas em .dvc/config.local dentro do container,
+            # que não é versionado — mesmo token read-only documentado no README.
+            docker compose -f docker-compose.prod.yml run --rm train sh -c "\
+              dvc remote modify storage --local auth basic && \
+              dvc remote modify storage --local user danielbispo3015 && \
+              dvc remote modify storage --local password 7854e6af9d7b3cff41b29f5aa897e369b5c00d0d && \
+              dvc pull"
+
+            echo "--- Treinando e registrando modelos no MLflow Registry ---"
+            # src/train.py já treina e chama registry.py internamente,
+            # promovendo o melhor modelo para Production.
+            docker compose -f docker-compose.prod.yml run --rm train
+
+            echo "--- Deploy concluído ---"
