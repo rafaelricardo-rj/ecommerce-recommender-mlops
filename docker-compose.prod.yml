@@ -42,6 +42,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      # A VPS tem só 1 vCPU: subir o Uvicorn com PyTorch/MLflow carregados
+      # pode levar bem mais que os ~13s observados em máquinas mais rápidas.
+      # Sem start_period, o healthcheck esgota as retries e marca o container
+      # como unhealthy antes dele terminar de subir.
+      start_period: 120s
 
   train:
     build:
