@@ -17,12 +17,19 @@ services:
     container_name: ecommerce-mlflow-server
     # --allowed-hosts e CORS liberam o IP público da VPS; sem isso o MLflow
     # rejeita requisições cujo header Host/Origin não esteja na lista.
+    # --serve-artifacts + --artifacts-destination: o servidor guarda os
+    # artefatos em /mlflow/artifacts e os entrega via HTTP (mlflow-artifacts://).
+    # NÃO usar --default-artifact-root: ele grava a URI como file:///mlflow/...,
+    # que só existe dentro do container do mlflow-server — um cliente rodando
+    # em outra máquina (ex: treino local publicando no MLflow da VPS) não
+    # consegue escrever artefatos nesse caminho.
     command: >
       mlflow server
       --host 0.0.0.0
       --port 5000
       --backend-store-uri sqlite:////mlflow/mlflow.db
-      --default-artifact-root /mlflow/artifacts
+      --serve-artifacts
+      --artifacts-destination /mlflow/artifacts
       --allowed-hosts "mlflow-server*,localhost*,82.29.57.75*"
     environment:
       MLFLOW_SERVER_CORS_ALLOWED_ORIGINS: http://82.29.57.75:5000

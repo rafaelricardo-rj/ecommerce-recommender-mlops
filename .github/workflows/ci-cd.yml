@@ -2,8 +2,13 @@
 #
 # Dois jobs:
 #   ci:     roda em todo PR e push — valida lint e testes.
-#   deploy: roda apenas no merge à main — baixa dados via DVC, treina,
-#           registra no MLflow Registry e sobe o MLflow Server na VPS.
+#   deploy: roda apenas no merge à main — builda a imagem e sobe/atualiza o
+#           MLflow Server na VPS.
+#
+# O treino dos modelos NÃO roda aqui: a VPS tem só 1 vCPU e o treino da MLP
+# (até 300 épocas) estourava o timeout do job. O Registry é populado uma
+# única vez rodando "src/train.py" localmente com MLFLOW_TRACKING_URI
+# apontando para a URL pública da VPS — não precisa repetir a cada deploy.
 #
 # Segredos necessários (configurar em Settings → Secrets and variables → Actions):
 #   VPS_HOST         → IP ou hostname da VPS
@@ -16,6 +21,11 @@ name: CI/CD
 on:
   push:
     branches: [main]
+    # Commits que só mexem em documentação não precisam rebuildar nem
+    # redeployar o MLflow Server na VPS.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
   pull_request:
     branches: [main]
 
@@ -64,8 +74,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          # O treino pode levar alguns minutos; aumentamos o timeout.
-          command_timeout: 30m
+          command_timeout: 15m
           # set -e: interrompe o script imediatamente se qualquer comando falhar.
           script: |
             set -e
@@ -88,23 +97,9 @@ jobs:
             echo "--- Construindo imagens ---"
             docker compose -f docker-compose.prod.yml build
 
-            echo "--- Iniciando MLflow (se não estiver rodando) ---"
-            # up -d é idempotente: não reinicia um container já em execução.
-            docker compose -f docker-compose.prod.yml up -d mlflow-server
-
-            echo "--- Baixando dados e modelos via DVC ---"
-            # O container 'train' já tem o DVC instalado (dependência do projeto).
-            # As credenciais são gravadas em .dvc/config.local dentro do container,
-            # que não é versionado — mesmo token read-only documentado no README.
-            docker compose -f docker-compose.prod.yml run --rm train sh -c "\
-              dvc remote modify storage --local auth basic && \
-              dvc remote modify storage --local user danielbispo3015 && \
-              dvc remote modify storage --local password 7854e6af9d7b3cff41b29f5aa897e369b5c00d0d && \
-              dvc pull"
-
-            echo "--- Treinando e registrando modelos no MLflow Registry ---"
-            # src/train.py já treina e chama registry.py internamente,
-            # promovendo o melhor modelo para Production.
-            docker compose -f docker-compose.prod.yml run --rm train
+            echo "--- Subindo/atualizando o MLflow Server ---"
+            # up -d --force-recreate garante que o container use a imagem
+            # recém-buildada mesmo que já estivesse rodando.
+            docker compose -f docker-compose.prod.yml up -d --force-recreate mlflow-server
 
             echo "--- Deploy concluído ---"
