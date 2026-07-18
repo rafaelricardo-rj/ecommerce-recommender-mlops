@@ -67,6 +67,11 @@ services:
       - ./data:/app/data
       - ./models:/app/models
       - ./docs:/app/docs
+      # .git fica fora da imagem (.dockerignore) para não inflar o build nem
+      # invalidar o cache a cada commit. É montado só em runtime, somente
+      # leitura, porque o DVC exige um repositório git para localizar o
+      # projeto e ler .dvc/config ao rodar "dvc pull".
+      - ./.git:/app/.git:ro
 
 volumes:
   mlflow-data:
