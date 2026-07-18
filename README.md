@@ -1,5 +1,9 @@
 # ecommerce-recommender-mlops
 
+> 🚀 **Deploy em nuvem (VPS):** o MLflow Server com o Model Registry populado está publicado em **[http://82.29.57.75:5000](http://82.29.57.75:5000)** — acesse para conferir os experimentos, métricas e os 5 modelos em Production.
+>
+> ⚠️ Acesso público mantido apenas até a conclusão da avaliação pelos professores da pós-graduação; depois desse período a exposição à internet será encerrada.
+
 <p align="left">
   <img src="https://img.shields.io/badge/Python-3.14+-3776AB?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch">
@@ -218,6 +222,22 @@ docker compose down
 ```
 
 Esse comando encerra os containers criados pelo Docker Compose. O volume usado pelo MLflow permanece salvo, permitindo manter os dados de tracking entre execuções.
+
+## ☁️ Deploy em Nuvem (VPS)
+
+O MLflow Server está publicado em uma VPS própria (Hostinger) usando a mesma imagem Docker deste projeto:
+
+```text
+http://82.29.57.75:5000
+```
+
+> Acesso público mantido apenas até a conclusão da avaliação pelos professores da pós-graduação.
+
+**Como funciona:**
+
+- [`docker-compose.prod.yml`](docker-compose.prod.yml) sobe o `mlflow-server` com a porta 5000 exposta publicamente, artefatos servidos via `--serve-artifacts` (permite logar modelos remotamente) e `restart: unless-stopped`.
+- [`.github/workflows/ci-cd.yml`](.github/workflows/ci-cd.yml) roda lint + testes em todo PR/push e, a cada push na `main` (exceto mudanças só em documentação), builda a imagem e sobe/atualiza o `mlflow-server` na VPS via SSH.
+- O treino dos 5 modelos **não** roda na VPS (ela tem só 1 vCPU, insuficiente para treinar a MLP em tempo hábil). Em vez disso, o Model Registry é populado rodando `src/train.py` localmente com `MLFLOW_TRACKING_URI` apontando para a URL pública acima — o treino local publica runs, métricas e artefatos diretamente no MLflow da VPS.
 
 ## 🔄 Pipeline DVC
 
